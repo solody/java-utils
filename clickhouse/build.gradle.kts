@@ -1,6 +1,5 @@
 plugins {
     `java-common-conventions`
-    `java-test-fixtures`
 }
 
 dependencies {

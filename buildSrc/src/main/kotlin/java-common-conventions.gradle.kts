@@ -1,13 +1,15 @@
 plugins {
     `java-library`
+    `maven-publish`
+    signing
 }
 
 repositories {
     mavenCentral()
 }
 
-group = "com.solody"
-version = "1.0-SNAPSHOT"
+group = "com.solody.java-utils"
+version = "1.0.0"
 
 val libs = the<VersionCatalogsExtension>().named("libs")
 val mockitoAgent = configurations.create("mockitoAgent")
@@ -38,6 +40,48 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+
+            pom {
+                name = "java-utils"
+                description = "A useful Java library."
+                url = "https://github.com/solody/java-utils"
+
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = "solody"
+                        name = "solody"
+                    }
+                }
+
+                scm {
+                    connection = "scm:git:git://github.com/solody/java-utils.git"
+                    developerConnection = "scm:git:ssh://github.com/solody/java-utils.git"
+                    url = "https://github.com/solody/java-utils"
+                }
+            }
+        }
+    }
+}
+
+// Test-fixture capabilities cannot be represented in Maven POM metadata.
+// Keep fixtures for in-repo consumption; do not publish them.
+plugins.withId("java-test-fixtures") {
+    val javaComponent = components["java"] as AdhocComponentWithVariants
+    javaComponent.withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
+    javaComponent.withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
 }
 
 tasks.named<Test>("test") {
