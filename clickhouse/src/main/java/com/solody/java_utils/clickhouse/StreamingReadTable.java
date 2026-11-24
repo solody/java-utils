@@ -22,7 +22,7 @@ abstract public class StreamingReadTable {
 
      Vertx vertx;
 
-     StreamingReadTable(Vertx vertx) {
+     public StreamingReadTable(Vertx vertx) {
          this.vertx = vertx;
      }
 
