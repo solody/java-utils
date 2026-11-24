@@ -3,6 +3,10 @@ plugins {
     `java-test-fixtures`
 }
 
+// Internal test helpers only — do not publish to Maven Central.
+tasks.withType<PublishToMavenRepository>().configureEach { enabled = false }
+tasks.withType<PublishToMavenLocal>().configureEach { enabled = false }
+tasks.withType<Sign>().configureEach { enabled = false }
 
 dependencies {
     testFixturesApi(platform(libs.junit.bom))

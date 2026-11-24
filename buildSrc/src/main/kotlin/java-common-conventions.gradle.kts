@@ -1,3 +1,7 @@
+import java.net.HttpURLConnection
+import java.net.URI
+import java.util.Base64
+
 plugins {
     `java-library`
     `maven-publish`
@@ -37,6 +41,9 @@ dependencies {
 }
 
 java {
+    withJavadocJar()
+    withSourcesJar()
+
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
@@ -48,7 +55,7 @@ publishing {
             from(components["java"])
 
             pom {
-                name = "java-utils"
+                name = project.name
                 description = "A useful Java library."
                 url = "https://github.com/solody/java-utils"
 
@@ -72,6 +79,100 @@ publishing {
                     url = "https://github.com/solody/java-utils"
                 }
             }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "central"
+            url = uri(
+                "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
+            )
+            credentials {
+                username = findProperty("mavenCentralUsername") as String?
+                    ?: System.getenv("MAVEN_CENTRAL_USERNAME")
+                password = findProperty("mavenCentralPassword") as String?
+                    ?: System.getenv("MAVEN_CENTRAL_PASSWORD")
+            }
+        }
+    }
+}
+
+signing {
+    val signingPassword = findProperty("signingPassword") as String?
+        ?: System.getenv("SIGNING_PASSWORD")
+        ?: findProperty("signing.password") as String?
+
+    val signingKeyFromProp = findProperty("signingKey") as String?
+        ?: System.getenv("SIGNING_KEY")
+    val signingKeyFilePath = findProperty("signingKeyFile") as String?
+        ?: System.getenv("SIGNING_KEY_FILE")
+
+    val signingKey = when {
+        !signingKeyFromProp.isNullOrBlank() ->
+            signingKeyFromProp.replace("\\n", "\n")
+        !signingKeyFilePath.isNullOrBlank() -> {
+            val file = file(signingKeyFilePath)
+            require(file.isFile) { "signingKeyFile not found: $signingKeyFilePath" }
+            file.readText()
+        }
+        else -> null
+    }
+
+    // Prefer in-memory / file key (CI-friendly); else fall back to keyring props.
+    if (!signingKey.isNullOrBlank()) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
+
+    sign(publishing.publications["mavenJava"])
+}
+
+// Sign for remote publish, or when a Sign task is requested explicitly.
+tasks.withType<Sign>().configureEach {
+    onlyIf {
+        val names = gradle.taskGraph.allTasks.map { it.name }
+        names.any { it.startsWith("sign") } ||
+            names.any { it.startsWith("publish") && !it.contains("ToMavenLocal") }
+    }
+}
+
+// After :publish, upload the staging repo into Central Publisher Portal.
+tasks.register("closeCentralDeployment") {
+    group = "publishing"
+    description =
+        "Upload the OSSRH staging deployment to Central Publisher Portal (same IP as publish)."
+    doLast {
+        val username = findProperty("mavenCentralUsername") as String?
+            ?: System.getenv("MAVEN_CENTRAL_USERNAME")
+            ?: error("Missing mavenCentralUsername / MAVEN_CENTRAL_USERNAME")
+        val password = findProperty("mavenCentralPassword") as String?
+            ?: System.getenv("MAVEN_CENTRAL_PASSWORD")
+            ?: error("Missing mavenCentralPassword / MAVEN_CENTRAL_PASSWORD")
+        val namespace = findProperty("mavenCentralNamespace") as String? ?: "com.solody"
+        val publishingType = findProperty("mavenCentralPublishingType") as String? ?: "user_managed"
+
+        val token = Base64.getEncoder()
+            .encodeToString("$username:$password".toByteArray(Charsets.UTF_8))
+        val url =
+            "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/$namespace?publishing_type=$publishingType"
+
+        val connection = URI(url).toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.connectTimeout = 60_000
+        connection.readTimeout = 120_000
+
+        val code = connection.responseCode
+        val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            .orEmpty()
+        if (code !in 200..299) {
+            error("closeCentralDeployment failed: HTTP $code\n$body")
+        }
+        logger.lifecycle("Uploaded staging deployment for $namespace (HTTP $code). Check https://central.sonatype.com/publishing")
+        if (body.isNotBlank()) {
+            logger.lifecycle(body)
         }
     }
 }
