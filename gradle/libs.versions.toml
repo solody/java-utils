@@ -1,0 +1,10 @@
+[versions]
+junit-jupiter = "6.0.0"
+vertx = "5.2.3"
+lombok = "1.18.42"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-jupiter" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api" }
+vertx-stack-depchain = { module = "io.vertx:vertx-stack-depchain", version.ref = "vertx" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
